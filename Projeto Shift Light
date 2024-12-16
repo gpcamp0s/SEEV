@@ -1,3 +1,18 @@
+/*
+Gonçalo Campos- 2222108
+Tiago Martins- 2202737
+IPLEIRIA - Instituto Politécnico de Leiria
+ESTG - Escola Superior de Tecnologia e Gestão
+EAU- Licenciatura em Engenharia Automóvel
+SEEV - Sistemas Elétricos e Eletrónicos de Veículos
+
+TP1: Instrumentação e simulação de um Shift Light
+
+LINK: https://www.youtube.com/watch?v=ulTAiGVbFL4
+LINK: https://github.com/gpcamp0s/SEEV/blob/main/Projeto%20Shift%20Light
+
+*/
+
 #include "Arduino.h"
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"

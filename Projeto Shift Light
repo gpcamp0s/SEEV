@@ -110,8 +110,8 @@ void setup() {
 	char var_aux_verificacao_criacao_objetos = true; // Variável para verificar se os objetos foram criados com sucesso.
 	vSemaphoreCreateBinary(xBinarySemaphore); // Cria o semáforo binário.
 
-	xMutex_UART = xSemaphoreCreateMutex();
-	if (xMutex_UART == NULL) {
+	xMutex_UART = xSemaphoreCreateMutex();// Criação de um mutex para controlo de acesso à UART.
+	if (xMutex_UART == NULL) { 			  // Se `xMutex_UART` retornar NULL, significa que o mutex não foi criado corretamente.
 		var_aux_verificacao_criacao_objetos = false;
 	}
 	xCountingSemaphore_encoder_motor = xSemaphoreCreateCounting(100000, 0); // Máximo de 100000 pulsos
@@ -120,9 +120,9 @@ void setup() {
 	}
 
 	//+++++++++++++++++++++++++++++++++++++++++++++Criação das filas para comunicação entre tarefas
-	xQueue_rpm = xQueueCreate(1, sizeof(float)); //(num de posiçoes que a queue vai ter , tipo da variavel)
-	if (xQueue_rpm == NULL) {
-		var_aux_verificacao_criacao_objetos = false;
+	xQueue_rpm = xQueueCreate(1, sizeof(float)); //(num de posiçoes da queue, tipo da variavel)
+	if (xQueue_rpm == NULL) { 					// Verificação se a criação da queue foi bem-sucedida
+		var_aux_verificacao_criacao_objetos = false;// Se "xQueue_rpm" retornar NULL, significa que houve falha na criação da queue
 	}
 	xQueue_pwm = xQueueCreate(1, sizeof(int));
 	if (xQueue_pwm == NULL) {
@@ -139,7 +139,9 @@ void setup() {
 
 	//++++++++++++++++++++++++++++++++++++++++++++++++Criação Tarefas
 	if (var_aux_verificacao_criacao_objetos) {
-		 // Criação das tarefas, com respectiva função e prioridade.
+		 // Criação das tarefas
+		 // (função, nome, tamanho, parâmetros, prioridade, core onde a task é executada)
+
 		xTaskCreatePinnedToCore(vTask_Brain, "vTask_brain", 2048,
 				(void*) pcTextFor_Brain, 4, NULL, 1);
 		xTaskCreatePinnedToCore(vTask_encoder, "vTask_encoder", 2048,
@@ -460,8 +462,8 @@ void vTask_leds(void *pvParameters) {
 
 	for (;;) {
 
-	xQueuePeek(xQueue_rpm, &media_rpm, 0);// Lê a média de RPM da fila
-	xQueuePeek(xQueue_modo_conducao, &modo_conducao_atual, 0);  // Lê o modo de condução atual da fila
+	xQueuePeek(xQueue_rpm, &media_rpm, 0);// Lê a média de RPM da queue
+	xQueuePeek(xQueue_modo_conducao, &modo_conducao_atual, 0);  // Lê o modo de condução atual da queue
 
 
 	if (modo_conducao_atual == MODO_CONDUCAO_NORMAL) { // Configuração para o modo normal.

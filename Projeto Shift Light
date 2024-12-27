@@ -8,7 +8,8 @@ SEEV - Sistemas Elétricos e Eletrónicos de Veículos
 
 TP1: Instrumentação e simulação de um Shift Light
 
-LINK: https://www.youtube.com/watch?v=ulTAiGVbFL4
+LINK: https://www.youtube.com/shorts/OUotWy5C90g
+LINK: https://github.com/gpcamp0s/SEEV/blob/main/Projeto%20Shift%20Light
 
 */
 
@@ -31,22 +32,18 @@ LINK: https://www.youtube.com/watch?v=ulTAiGVbFL4
 #define RPM_MAXIMO 7000
 #define RPM_MINIMO 0
 #define LED_TYPE    WS2812
-#define COLOR_ORDER GRB
+#define COLOR_ORDER GRB		// Ordem de cores do LED (verde, vermelho, azul)
 #define NUM_LEDS    8
 
 #define BARRA_LEDS_RPM_MAX_NORMAL 4700
 #define BARRA_LEDS_RPM_MIN_NORMAL 1200
 #define BARRA_LEDS_RPM_INICIA_PISCA_NORMAL 5000
-
 #define BARRA_LEDS_RPM_MAX_SPORT 6000
 #define BARRA_LEDS_RPM_MIN_SPORT 1500
 #define BARRA_LEDS_RPM_INICIA_PISCA_SPORT 6600
-
 #define INTENSIDADE_BARRA_LEDS 255
 #define BARRA_LEDS_ESTADO_OFF 0
 #define BARRA_LEDS_ESTADO_ON 1
-
-#define ADC_SAMPLES 10  // Número de amostras para média
 
 //++++++++++++++++++++++++++++++++++++++++++++++++Constantes Pinos
 #define TFT_CS   5
@@ -54,12 +51,14 @@ LINK: https://www.youtube.com/watch?v=ulTAiGVbFL4
 #define TFT_MOSI 23
 #define TFT_MISO 19
 #define TFT_SCLK 18
-#define TFT_RST  -1 // Ligar ao 3V3
-#define MOTOR_PWM 25  // Terminal de PWM para o motor
-#define ADC_PIN   34  // Pinagem para leitura do ADC
-#define ENCODER_PIN 35 // Pino de entrada do encoder
-#define PINO_BARRA_LEDS    15
+#define TFT_RST  -1 	// Ligar ao 3V3
+#define MOTOR_PWM 25  	// Terminal de PWM para o motor
+#define ADC_PIN   34  	// Pino potenciometro
+#define ENCODER_PIN 35 	// Pino encoder
+#define PINO_BARRA_LEDS 15
 #define BTN_PIN 0
+#define LDR_PIN   13   // Pino LDR
+#define BUZZER_PIN 17  // Pino buzzer
 
 //++++++++++++++++++++++++++++++++++++++++++++++++Cabeçalhos Interrupcoes
 static void IRAM_ATTR vInterruptHandler_encoder(void);
@@ -74,17 +73,7 @@ void vTask_display(void *pvParameters);
 void vTask_botao(void *pvParameters);
 void vTask_leds(void *pvParameters);
 
-//++++++++++++++++++++++++++++++++++++++++++++++++Parametros de entrada Tarefas
-const char *pcTextFor_Brain = "Brain task is running ";
-const char *pcTextFor_Encoder = "Encoder task is running ";
-const char *pcTextFor_Motor = "Motor task is running ";
-const char *pcTextFor_ADC = "ADC task is running ";
-const char *pcTextFor_Display = "Display task is running ";
-const char *pcTextFor_Botao = "Botao task is running ";
-const char *pcTextFor_LEDS = "LEDS task is running ";
-
-//++++++++++++++++++++++++++++++++++++++++++++++++Cabeçalhos Mutex/Semaforos
-SemaphoreHandle_t xMutex_UART; //Serve para controlar a escrita na porta série (Para a tarefa escrever a mensagem completa sem passar para outra)
+//++++++++++++++++++++++++++++++++++++++++++++++++Cabeçalhos Semaforos
 SemaphoreHandle_t xCountingSemaphore_encoder_motor; // Semáforo contador para gerir pulsos do encoder
 SemaphoreHandle_t xBinarySemaphore; // Semáforo binário para sincronizar a interrupção do botão
 
@@ -99,65 +88,38 @@ void setup() {
 	Serial.begin(115200); // Inicia a comunicação UART
 
 	//+++++++++++++++++++++++++++++++++++++++++++++Configs pinos
+
+	pinMode(BUZZER_PIN, OUTPUT); // Configura o pino do buzzer como saída
+
 	pinMode(ENCODER_PIN, INPUT); // Configura o pino do encoder como entrada.
+	// Define uma interrupção para o encoder, chamando a função 'vInterruptHandler_encoder' quando ocorrer uma transição de FALLING (descida)
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN),
 			&vInterruptHandler_encoder, FALLING);
+
 	pinMode(BTN_PIN, INPUT); // Configura o pino do botão como entrada.
+	// Define uma interrupção para o botão, chamando a função 'vExampleInterruptHandler_BTN' quando ocorrer uma transição de FALLING
 	attachInterrupt(digitalPinToInterrupt(BTN_PIN),
 			&vExampleInterruptHandler_BTN, FALLING);
 
 	//++++++++++++++++++++++++++++++++++++++++++++++Criacao objetos
-	char var_aux_verificacao_criacao_objetos = true; // Variável para verificar se os objetos foram criados com sucesso.
 	vSemaphoreCreateBinary(xBinarySemaphore); // Cria o semáforo binário.
-
-	xMutex_UART = xSemaphoreCreateMutex();// Criação de um mutex para controlo de acesso à UART.
-	if (xMutex_UART == NULL) { 			  // Se `xMutex_UART` retornar NULL, significa que o mutex não foi criado corretamente.
-		var_aux_verificacao_criacao_objetos = false;
-	}
-	xCountingSemaphore_encoder_motor = xSemaphoreCreateCounting(100000, 0); // Máximo de 100000 pulsos
-	if (xCountingSemaphore_encoder_motor == NULL) {
-		var_aux_verificacao_criacao_objetos = false; // Caso falhe ao criar o semáforo.
-	}
+	xCountingSemaphore_encoder_motor = xSemaphoreCreateCounting(100000, 0); // Cria o semáforo contador p/ contar pulsos do encoder (máx 100000 pulsos)
 
 	//+++++++++++++++++++++++++++++++++++++++++++++Criação das filas para comunicação entre tarefas
-	xQueue_rpm = xQueueCreate(1, sizeof(float)); //(num de posiçoes da queue, tipo da variavel)
-	if (xQueue_rpm == NULL) { 					// Verificação se a criação da queue foi bem-sucedida
-		var_aux_verificacao_criacao_objetos = false;// Se "xQueue_rpm" retornar NULL, significa que houve falha na criação da queue
-	}
-	xQueue_pwm = xQueueCreate(1, sizeof(int));
-	if (xQueue_pwm == NULL) {
-		var_aux_verificacao_criacao_objetos = false;
-	}
-	xQueue_adc = xQueueCreate(1, sizeof(int));
-	if (xQueue_adc == NULL) {
-		var_aux_verificacao_criacao_objetos = false;
-	}
-	xQueue_modo_conducao = xQueueCreate(1, sizeof(char));
-	if (xQueue_modo_conducao == NULL) {
-		var_aux_verificacao_criacao_objetos = false;
-	}
+	xQueue_rpm = xQueueCreate(1, sizeof(float)); // Tamanho 1, tipo de dados float
+	xQueue_pwm = xQueueCreate(1, sizeof(int)); // Tamanho 1, tipo de dados int
+	xQueue_adc = xQueueCreate(1, sizeof(int)); // Tamanho 1, tipo de dados int
+	xQueue_modo_conducao = xQueueCreate(1, sizeof(char)); // Tamanho 1, tipo de dados char
 
 	//++++++++++++++++++++++++++++++++++++++++++++++++Criação Tarefas
-	if (var_aux_verificacao_criacao_objetos) {
-		 // Criação das tarefas
-		 // (função, nome, tamanho, parâmetros, prioridade, core onde a task é executada)
+	xTaskCreatePinnedToCore(vTask_Brain, "vTask_brain", 2048, NULL, 4, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_encoder, "vTask_encoder", 2048, NULL, 5, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_motor, "vTask_motor", 1024, NULL, 3, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_adc, "vTask_adc", 2048, NULL, 3, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_display, "vTask_display", 4096, NULL, 2, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_botao, "vTask_botao", 1024, NULL, 6, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_leds, "vTask_leds", 4096,	NULL, 4, NULL, 1);
 
-		xTaskCreatePinnedToCore(vTask_Brain, "vTask_brain", 2048,
-				(void*) pcTextFor_Brain, 4, NULL, 1);
-		xTaskCreatePinnedToCore(vTask_encoder, "vTask_encoder", 2048,
-				(void*) pcTextFor_Encoder, 5, NULL, 1);
-		xTaskCreatePinnedToCore(vTask_motor, "vTask_motor", 1024,
-				(void*) pcTextFor_Motor, 3, NULL, 1);
-		xTaskCreatePinnedToCore(vTask_adc, "vTask_adc", 2048,
-				(void*) pcTextFor_ADC, 3, NULL, 1);
-		xTaskCreatePinnedToCore(vTask_display, "vTask_display", 4096,
-				(void*) pcTextFor_Display, 2, NULL, 1);
-		xTaskCreatePinnedToCore(vTask_botao, "vTask_botao", 1024,
-				(void*) pcTextFor_Botao, 6, NULL, 1);
-		xTaskCreatePinnedToCore(vTask_leds, "vTask_leds", 4096,
-				(void*) pcTextFor_LEDS, 4, NULL, 1);
-	}
-	interrupts(); //Habilita as interrupçoes
 }
 
 void loop() {
@@ -165,14 +127,16 @@ void loop() {
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++Criação das interrupções
+
 //Interrupcao contadora de pulsos para o encoder
 static void IRAM_ATTR vInterruptHandler_encoder(void) {
-	static portBASE_TYPE xHigherPriorityTaskWoken; // Indica se uma tarefa de alta prioridade deve ser executada
-
-	xHigherPriorityTaskWoken = pdFALSE; // Inicializa como falso
-
+	static portBASE_TYPE xHigherPriorityTaskWoken; // Indica se uma tarefa de maior prioridade deve ser executada
+	xHigherPriorityTaskWoken = pdFALSE; // Inicializa o indicador de alta prioridade como 'falso'
+	// Liberta o semáforo contador p/ contar os pulsos do encoder
+	// O semáforo é dado a partir da ISR, notificando que ocorreu um novo pulso
 	xSemaphoreGiveFromISR(xCountingSemaphore_encoder_motor,
 			(BaseType_t* )&xHigherPriorityTaskWoken);
+	// Se uma tarefa de maior prioridade for despertada, a execução será transferida para essa tarefa
 	if (xHigherPriorityTaskWoken == pdTRUE) { // Se uma tarefa foi despertada...
 		portYIELD_FROM_ISR();// Troca para a tarefa de maior prioridade.
 	}
@@ -182,150 +146,94 @@ static void IRAM_ATTR vInterruptHandler_encoder(void) {
 static void IRAM_ATTR vExampleInterruptHandler_BTN(void) {
 static signed portBASE_TYPE xHigherPriorityTaskWoken; // Indica se uma tarefa de maior prioridade deve ser executada
 xHigherPriorityTaskWoken = pdFALSE;
+// Liberta o semáforo binário do botão, indicando que o botão foi pressionado
 xSemaphoreGiveFromISR(xBinarySemaphore,
 		(signed portBASE_TYPE*)&xHigherPriorityTaskWoken);
-
-if (xHigherPriorityTaskWoken == pdTRUE) { // Se uma tarefa foi despertada...
+// Se uma tarefa de maior prioridade for despertada, a execução será transferida para essa tarefa
+if (xHigherPriorityTaskWoken == pdTRUE) {
 	portYIELD_FROM_ISR(); // Troca para a tarefa de maior prioridade.
 	}
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++Tasks
-
+//+++++++Tarefa principal p/ controlar o PWM baseado no valor do ADC
 void vTask_Brain(void *pvParameters) {
-	char *pcTaskName; // Ponteiro para armazenar o nome da tarefa
-	TickType_t xLastWakeTime; // Variável para armazenar o instante do último "acordar" da tarefa, para controlo periódico.
-	pcTaskName = (char*) pvParameters;// Inicia o nome da tarefa com o parâmetro recebido.
-	xLastWakeTime = xTaskGetTickCount();
-
-	int pwmValue = 0;
-	int adcValue = 0;
+	int pwmValue = 0;// Variável para armazenar o valor do PWM
+	int adcValue = 0;// Variável para armazenar o valor lido do ADC
 
 	for (;;) {
-		xSemaphoreTake(xMutex_UART, portMAX_DELAY); // Utiliza mutex da UART para garantir acesso exclusivo à porta serial.
-		{
-			Serial.println(pcTaskName); // Envia o nome da tarefa para o Serial monitor
-		}
-		xSemaphoreGive(xMutex_UART); // Liberta o mutex, permitindo que outras tarefas acedam à UART.
-
 		xQueuePeek(xQueue_adc, &adcValue, 0); // Lê o valor mais recente da fila do ADC sem o remover
-		pwmValue = map(adcValue, 0, 4095, 0, 255);
+		pwmValue = map(adcValue, 0, 4095, 0, 255); // Mapeia o valor do ADC (0-4095) para o intervalo de PWM (0-255)
 		xQueueOverwrite(xQueue_pwm, &pwmValue); // Escreve por cima do valor atual na queue do PWM com o novo valor calculado
 
-		vTaskDelayUntil(&xLastWakeTime, (100 / portTICK_PERIOD_MS));
+		vTaskDelay(100 / portTICK_PERIOD_MS); // Delay p/ tarefa esperar 100 ms antes de rodar novamente
 	}
 }
 
+//++++++Tarefa do encoder p/ calcular a RPM
 void vTask_encoder(void *pvParameters) {
-	char *pcTaskName;
-	TickType_t xLastWakeTime;
-	pcTaskName = (char*) pvParameters;
-	xLastWakeTime = xTaskGetTickCount();
+	int numero_pulsos_motor1; //Variável para armazenar o número de pulsos do encoder (registado pelo semáforo contador).
+	float rpm; //Variável para armazenar o cálculo da RPM
 
-	int numero_pulsos_motor1;
-	float rpm;
 	for (;;) {
-
-		// Obtém a contagem atual de pulsos do encoder a partir do semáforo contador.
 		numero_pulsos_motor1 = uxSemaphoreGetCount(xCountingSemaphore_encoder_motor); //Vai buscar a contagem do numero de interrupçoes ocorridas
-		 // Reseta a contagem do semáforo para iniciar a contagem de pulsos novamente.
-		xQueueReset(xCountingSemaphore_encoder_motor); //Poe a contagem do semaforo a 0
+		xQueueReset(xCountingSemaphore_encoder_motor);// Reseta a contagem do semáforo para iniciar a contagem de pulsos novamente.
+		// Divide-se o número de pulsos pelo número de pulsos por rotação e multiplica-se por 600 p/ converter p/ RPM
+		rpm = (float) ((float) numero_pulsos_motor1 / (float) PULSES_PER_REV) * 600; //600 no cálculo serve para converter o número de rotações por intervalo de tempo (100 ms) para RPM
+		Serial.print("RPM: ");
+		Serial.println(rpm);
 
-		rpm = (float) ((float) numero_pulsos_motor1 / (float) PULSES_PER_REV) * 600;
+		xQueueOverwrite(xQueue_rpm, &rpm); // Sobrescreve o valor da RPM na queue para ser lido por outras tarefas
 
-		xQueueOverwrite(xQueue_rpm, &rpm); //Escreve para a queue
-
-		xSemaphoreTake(xMutex_UART, portMAX_DELAY);
-		{
-			Serial.println(pcTaskName);
-			Serial.println(rpm);
-		}
-		xSemaphoreGive(xMutex_UART);
-
-		vTaskDelayUntil(&xLastWakeTime, (100 / portTICK_PERIOD_MS));
+		vTaskDelay(100 / portTICK_PERIOD_MS); // Delay para esperar 100 ms antes de recalcular a RPM
 	}
 }
 
+//++++++Tarefa p/ controlar o motor com PWM
 void vTask_motor(void *pvParameters) {
-	char *pcTaskName;
-	TickType_t xLastWakeTime;
-	pcTaskName = (char*) pvParameters;
-	xLastWakeTime = xTaskGetTickCount();
-
-	int pwmValue = 0;
-	int pwm_freq = 5000;
-	int pwm_Channel = 5;
-	int pwm_resolution = 8;
+	int pwmValue = 0; // Variável para armazenar o valor do PWM
+	int pwm_freq = 5000; // Frequência do PWM (em Hz)
+	int pwm_Channel = 5; // Canal do PWM
+	int pwm_resolution = 8; // Resolução do PWM (8 bits = 256 valores possíveis)
+	// Anexa o canal de PWM ao motor com a frequência e resolução definidas
 	ledcAttachChannel(MOTOR_PWM, pwm_freq, pwm_resolution, pwm_Channel);
 
 	for (;;) {
-		xSemaphoreTake(xMutex_UART, portMAX_DELAY);
-		{
-			Serial.println(pcTaskName);
-		}
-		xSemaphoreGive(xMutex_UART);
-
 		xQueuePeek(xQueue_pwm, &pwmValue, 0); //Espreita o valor do PWM sem o apagar
 		ledcWrite(MOTOR_PWM, pwmValue); //Escreve para o canal o valor do pwm
-		vTaskDelayUntil(&xLastWakeTime, (100 / portTICK_PERIOD_MS));
+		vTaskDelay(100 / portTICK_PERIOD_MS); // Delay para esperar 100 ms antes de controlar o motor novamente
 	}
 }
 
+//++++++Tarefa p/ ler o valor do ADC e calcular a média das amostras
 void vTask_adc(void *pvParameters) {
-	char *pcTaskName;
-	TickType_t xLastWakeTime;
-	pcTaskName = (char*) pvParameters;
-	xLastWakeTime = xTaskGetTickCount();
-	int adcValue = 0;
+    int adcValue = 0; // Variável para armazenar o valor lido do ADC.
 
-	int adcValues[ADC_SAMPLES];  // Array para armazenar um conjunto de amostras do ADC
-	int adcIndex = 0;  // Índice atual do array de amostras (indica onde a próxima leitura será armazenada).
-	long sum = 0; // Variável para armazenar a soma das amostras do ADC.
+    for (;;) {
+        adcValue = analogRead(ADC_PIN); // Lê o valor do pino analógico (entrada do ADC).
+        Serial.print("ADC: ");
+        Serial.println(adcValue);
 
-	for (;;) {
-		adcValue = analogRead(ADC_PIN); // Lê o valor do pino analógico (entrada do ADC).
-        // Armazena a leitura no array de amostras e atualiza o índice para o próximo elemento.
-		adcValues[adcIndex] = adcValue;
-		adcIndex = (adcIndex + 1) % ADC_SAMPLES; // Garante que o índice fique dentro do intervalo (0 a ADC_SAMPLES - 1).
-		sum = 0;
+        xQueueOverwrite(xQueue_adc, &adcValue); // Sobrescreve o valor lido na fila.
 
-		// Percorre o vetor inteiro, somando todas as amostras.
-		for (int i = 0; i < ADC_SAMPLES; i++) {
-			sum += adcValues[i];  // Percorre o vetor todo, somando a posições do vetor
-		}
-		adcValue = (int) sum / ADC_SAMPLES;// Calcula a média das amostras armazenadas no array.
-
-		xSemaphoreTake(xMutex_UART, portMAX_DELAY);
-		{
-			Serial.println(pcTaskName); //Nome da tarefa
-			Serial.println(adcValue); //Valor do ADC
-		}
-		xSemaphoreGive(xMutex_UART);
-
-		xQueueOverwrite(xQueue_adc, &adcValue);
-
-		vTaskDelayUntil(&xLastWakeTime, (100 / portTICK_PERIOD_MS));
-	}
+        vTaskDelay(100 / portTICK_PERIOD_MS); // Aguarda 100 ms antes de fazer uma nova leitura.
+    }
 }
 
+//++++++Tarefa p/ exibir informações no display
 void vTask_display(void *pvParameters) {
-	Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK,
-	TFT_RST, TFT_MISO);
-	char *pcTaskName;
-	TickType_t xLastWakeTime;
-	pcTaskName = (char*) pvParameters;
-	xLastWakeTime = xTaskGetTickCount();
+	Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST, TFT_MISO);
 
-	char currentModo = 0;
-	float currentRpm = 0;
-	float lastRpm = 0;
-	char lastModo = 0;
+	char currentModo = 0; // Variável para armazenar o modo atual
+	float currentRpm = 0; // Variável para armazenar a RPM atual
+	float lastRpm = 0; // Variável para armazenar a última RPM exibida
+	char lastModo = 0; // Variável para armazenar o último modo exibido
 
-	tft.begin();
-	tft.fillScreen(ILI9341_BLACK);
+	tft.begin(); // Inicializa o display
+	tft.fillScreen(ILI9341_BLACK); // Preenche o ecrã com a preto
 	tft.setRotation(0);
 
-	 // Rótulos Fixos
+	// Rótulos Fixos
 	tft.setTextSize(2);
 	tft.setTextColor(ILI9341_YELLOW);
 	tft.setCursor(10, 10);
@@ -343,10 +251,11 @@ void vTask_display(void *pvParameters) {
 	tft.print("Normal"); // Exibe o novo valor
 
 	for (;;) {
+		// Espreita o valor da RPM e o modo de condução da queue
 		xQueuePeek(xQueue_rpm, &currentRpm, 0);
 		xQueuePeek(xQueue_modo_conducao, &currentModo, 0);
 
-		// Atualiza os valores quando há mudança
+		// Se o valor da RPM mudou, atualiza o display
 		if (currentRpm != lastRpm) {
 			tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK); // Texto branco, fundo preto
 			tft.setCursor(130, 70); // Posição para o valor dos RPM
@@ -355,198 +264,151 @@ void vTask_display(void *pvParameters) {
 			tft.print(currentRpm); // Exibe o novo valor
 			lastRpm = currentRpm;
 		}
-
+		// Se o modo de condução mudou, atualiza o display
 		if (currentModo != lastModo) {
 			tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK); // Texto branco, fundo preto
 			tft.setCursor(100, 50); // Posição para o valor do modo
-			tft.print("       "); // Apaga o valor anterior
+			tft.print("       "); // Apaga o modo anterior
 			tft.setCursor(100, 50);
 			if (currentModo == MODO_CONDUCAO_NORMAL) {
-				tft.print("Normal"); // Exibe o novo valor
+				tft.print("Normal"); // Exibe o novo modo
 
 			} else if (currentModo == MODO_CONDUCAO_SPORT) {
-				tft.print("Sport"); // Exibe o novo valor
-
+				tft.print("Sport"); // Exibe o novo modo
 			}
 			lastModo = currentModo;
 		}
-		xSemaphoreTake(xMutex_UART, portMAX_DELAY);
-		{
-			Serial.println(pcTaskName);
-			Serial.println(currentRpm);
-		}
-		xSemaphoreGive(xMutex_UART);
-
-		vTaskDelayUntil(&xLastWakeTime, (500 / portTICK_PERIOD_MS));
+		vTaskDelay(500 / portTICK_PERIOD_MS);
 	}
 }
 
+
+//++++++Tarefa p/ controlar modo de condução com o botão
 void vTask_botao(void *pvParameters) {
-	char *pcTaskName;
-	TickType_t xLastWakeTime;
-	pcTaskName = (char*) pvParameters;
-	xLastWakeTime = xTaskGetTickCount();
-
+	//Configura o modo de condução inicial para normal
 	char modo_conducao = MODO_CONDUCAO_NORMAL;
-
-	//SETUP task
+	// Inicializa o semáforo (bloqueia a tarefa até que o semáforo seja dado)
 	xSemaphoreTake(xBinarySemaphore, 0);
 
 	for (;;) {
 		//a tarefa so corre quando ha give do semaforo na interrupcao
 		xSemaphoreTake(xBinarySemaphore, portMAX_DELAY);
+		// Alterna o valor do modo de condução (XOR bit a bit)
+		// Se modo_conducao for 0, o XOR com 1 resulta em 1. Se for 1, o XOR com 1 resulta em 0.
 		modo_conducao = modo_conducao ^ 1;
-
+		// Sobrescreve o valor do modo de condução na queue
 		xQueueOverwrite(xQueue_modo_conducao, &modo_conducao);
-
-		xSemaphoreTake(xMutex_UART, portMAX_DELAY);
-		{
-			Serial.println(pcTaskName);
-		}
-		xSemaphoreGive(xMutex_UART);
-
-		vTaskDelayUntil(&xLastWakeTime, (100 / portTICK_PERIOD_MS));
+		// Delay de 100 ms antes de voltar a verificar o botão
+		vTaskDelay(100 / portTICK_PERIOD_MS);
 	}
 }
 
-uint8_t calcula_R(uint8_t i) {
+uint8_t calcula_R(uint8_t i) {  // Função para calcular o vermelho (R) com base no índice do LED.
 	if (i < 3) {
-	return 0;
+	return 0;  // LEDs nas primeiras 3 posições têm o vermelho desligado.
 	}
-	if (i < 5) {
+	if (i < 5) { // LEDs nas posições de 3 a 4 têm o vermelho no máximo.
 	return 255;
 	}
-	if (i < 8) {
-	return 255;
-	}
-	return 0;
-}
-
-uint8_t calcula_G(uint8_t i) {
-	if (i < 3) {
-	return 255;
-	}
-	if (i < 5) {
+	if (i < 8) { // LEDs nas posições de 5 a 7 têm o vermelho no máximo.
 	return 255;
 	}
 	return 0;
 }
 
-uint8_t calcula_B(uint8_t i) {
-	if (i < 24) {
+uint8_t calcula_G(uint8_t i) { // Função para calcular o verde (G) com base no índice do LED.
+	if (i < 3) { // LEDs nas primeiras 3 posições têm o componente verde no máximo.
+	return 255;
+	}
+	if (i < 5) { // LEDs nas posições de 3 a 4 têm o verde no máximo.
+	return 255;
+	}
+	return 0;
+}
+
+uint8_t calcula_B(uint8_t i) { // Função para calcular o azul (B) com base no índice do LED.
+	if (i < 9) {
 	return 0;
 	}
 	return 255;
 }
 
+//++++++Tarefa p/ controlar LEDs com base nas RPM e modo de condução
 void vTask_leds(void *pvParameters) {
-	char *pcTaskName;
-	TickType_t xLastWakeTime;
-	pcTaskName = (char*) pvParameters;
-	xLastWakeTime = xTaskGetTickCount();
+    float media_rpm = 0; // Variável p/ armazenar média de RPM lida da queue
+    int ldrValue = 0;    // Variável p/ armazenar valor lido do LDR
+    int num_leds = 0;    // Número de LEDs a serem acesos
+    uint8_t estado_barra_leds_pisca = 0; // Estado atual do efeito de piscar (ligado/desligado)
+    char modo_conducao_atual = MODO_CONDUCAO_NORMAL; // Modo de condução padrão inicial
 
-	float media_rpm = 0; // Média de RPM lida da queue
-	u_int k = (BARRA_LEDS_RPM_MAX_NORMAL - BARRA_LEDS_RPM_MIN_NORMAL) / NUM_LEDS; // Divisão de RPM por número de LEDs
+    // Inicialização dos LEDs
+    CRGB leds[NUM_LEDS]; // Array que representa os LEDs
+    FastLED.addLeds<LED_TYPE, PINO_BARRA_LEDS, COLOR_ORDER>(leds, NUM_LEDS); // Configura tipo de LED, pino e ordem de cor
+    FastLED.setMaxPowerInVoltsAndMilliamps(5, 500); // Define limite de energia para os LEDs (5V, 500mA)
+    FastLED.clear(); // Inicia apagando todos os LEDs
+    FastLED.show(); // Aplica o estado inicial nos LEDs
+    FastLED.setBrightness(INTENSIDADE_BARRA_LEDS); // Define o brilho inicial
 
-	int num_leds = 0;
-	uint8_t funcao_pisca_barra_leds = 0; // Estado atual do pisca
-	uint8_t estado_barra_leds_pisca = 0; // Estado do LED (ligado/desligado)
-	char modo_conducao_atual, modo_conducao_anterior;
-	CRGB leds[NUM_LEDS];// Array que armazena os LEDs controlados pela biblioteca FastLED
+    for (;;) { // Loop infinito da tarefa
+        xQueuePeek(xQueue_rpm, &media_rpm, 0); // Lê a média de RPM da queue
+        xQueuePeek(xQueue_modo_conducao, &modo_conducao_atual, 0); // Lê o modo de condução atual da queue
 
-	FastLED.addLeds<LED_TYPE, PINO_BARRA_LEDS, COLOR_ORDER>(leds, NUM_LEDS); // Configura o tipo de LED, pino e ordem de cores
-	FastLED.setMaxPowerInVoltsAndMilliamps(5, 500);
-	FastLED.clear();
-	FastLED.show();
-	FastLED.setBrightness(INTENSIDADE_BARRA_LEDS);
+        // Configuração dos limites de RPM e o valor de início de piscar baseado no modo de condução
+        u_int rpm_max, rpm_min, rpm_pisca;
+        if (modo_conducao_atual == MODO_CONDUCAO_NORMAL) { // Caso o modo seja NORMAL
+            rpm_max = BARRA_LEDS_RPM_MAX_NORMAL; // Define o RPM máximo para modo NORMAL
+            rpm_min = BARRA_LEDS_RPM_MIN_NORMAL; // Define o RPM mínimo para modo NORMAL
+            rpm_pisca = BARRA_LEDS_RPM_INICIA_PISCA_NORMAL; // Define o RPM em que inicia o piscar no modo NORMAL
+        } else { // Caso o modo seja SPORT
+            rpm_max = BARRA_LEDS_RPM_MAX_SPORT; // Define o RPM máximo para modo SPORT
+            rpm_min = BARRA_LEDS_RPM_MIN_SPORT; // Define o RPM mínimo para modo SPORT
+            rpm_pisca = BARRA_LEDS_RPM_INICIA_PISCA_SPORT; // Define o RPM com que inicia o piscar no modo SPORT
+        }
 
-	for (;;) {
+        int k = rpm_max / NUM_LEDS;  // Calcula o fator de divisão de RPM para determinar o número de LEDs
 
-	xQueuePeek(xQueue_rpm, &media_rpm, 0);// Lê a média de RPM da queue
-	xQueuePeek(xQueue_modo_conducao, &modo_conducao_atual, 0);  // Lê o modo de condução atual da queue
+        ldrValue = analogRead(LDR_PIN); // Lê o valor do sensor (0 a 1023)
+        int intensidade = map(ldrValue, 0, 1023, 0, 255); // Mapeia o valor para a intensidade (0 a 255)
+        FastLED.setBrightness(intensidade); // Atualiza o brilho dos LEDs com base no valor do LDR
 
+        if (media_rpm > rpm_pisca) { // Caso ultrapasse o limite para piscar
+            for (int i = 0; i < NUM_LEDS; i++) {
+                leds[i] = CRGB(0, 0, 255); // Todos os LEDs em azul
+            }
+            tone(BUZZER_PIN, 2000); // Ativa o buzzer com 2000Hz
+            vTaskDelay(250 / portTICK_PERIOD_MS); // Mantém o buzzer ativo por 250ms
+            noTone(BUZZER_PIN); // Desativa o buzzer
+            vTaskDelay(250 / portTICK_PERIOD_MS); // Pausa antes do próximo apito
 
-	if (modo_conducao_atual == MODO_CONDUCAO_NORMAL) { // Configuração para o modo normal.
-		u_int k = BARRA_LEDS_RPM_MAX_NORMAL / NUM_LEDS; // Recalcula o fator de RPM por LED.
-
-		if (media_rpm > BARRA_LEDS_RPM_INICIA_PISCA_NORMAL) { // Pisca os LEDs se RPM exceder o limite
-
-			for (int i = 0; i < NUM_LEDS; i++) {
-				leds[i] = CRGB(0, 0, 255); // Define todos os LEDs como azuis
-			}
-			// Alterna entre os estados de ligado/desligado para criar o efeito de piscar.
-			if (estado_barra_leds_pisca == BARRA_LEDS_ESTADO_ON) {
-				FastLED.setBrightness(0);
-				FastLED.show();
-				estado_barra_leds_pisca = BARRA_LEDS_ESTADO_OFF;
-				vTaskDelayUntil(&xLastWakeTime, (75 / portTICK_PERIOD_MS));
-			}
-			if (estado_barra_leds_pisca == BARRA_LEDS_ESTADO_OFF) {
-
-				FastLED.setBrightness(INTENSIDADE_BARRA_LEDS);
-				FastLED.show();
-				estado_barra_leds_pisca = BARRA_LEDS_ESTADO_ON;
-				vTaskDelayUntil(&xLastWakeTime, (75 / portTICK_PERIOD_MS));
-			}
-		} else {// Configuração dos LEDs para RPM dentro do intervalo normal.
-
-			if (media_rpm < BARRA_LEDS_RPM_MIN_NORMAL) { // Se o RPM for muito baixo, apaga todos os LEDs.
-				num_leds = 0;
-				for (int j = 0; j < NUM_LEDS; j++) {
-					leds[j] = CRGB(0, 0, 0); // Apaga os LEDs.
-				}
-			} else { // Calcula o número de LEDs a serem acesos com base no RPM.
-				num_leds = (int) media_rpm / (int) k;
-				for (int i = 0; i < num_leds; i++) {
-					leds[i] = CRGB(calcula_R(i), calcula_G(i), calcula_B(i)); // Configura LEDs com cores específicas.
-				}
-				for (int j = num_leds; j < NUM_LEDS; j++) {
-					leds[j] = CRGB(0, 0, 0); // Apaga os LEDs restantes.
-				}
-			}
-		}
-	} else if (modo_conducao_atual == MODO_CONDUCAO_SPORT) { // Configuração para o modo SPORT
-		u_int k = BARRA_LEDS_RPM_MAX_SPORT / NUM_LEDS; // Recalcula a relação RPM/LEDs para o modo SPORT
-
-		if (media_rpm > BARRA_LEDS_RPM_INICIA_PISCA_SPORT) { // Condição para piscar LEDs.
-
-			for (int i = 0; i < NUM_LEDS; i++) {
-				leds[i] = CRGB(0, 0, 255); // LEDs em azul
-			}
-			// Alterna entre os estados de ligado/desligado para o efeito de piscar.
-			if (estado_barra_leds_pisca == BARRA_LEDS_ESTADO_ON) {
-				FastLED.setBrightness(0);
-				FastLED.show();
-				estado_barra_leds_pisca = BARRA_LEDS_ESTADO_OFF;
-				vTaskDelayUntil(&xLastWakeTime, (75 / portTICK_PERIOD_MS));
-			}
-			if (estado_barra_leds_pisca == BARRA_LEDS_ESTADO_OFF) {
-
-				FastLED.setBrightness(INTENSIDADE_BARRA_LEDS);
-				FastLED.show();
-				estado_barra_leds_pisca = BARRA_LEDS_ESTADO_ON;
-				vTaskDelayUntil(&xLastWakeTime, (75 / portTICK_PERIOD_MS));
-			}
-
-		} else { // Para quando o RPM está abaixo do limite no modo SPORT
-
-			if (media_rpm < BARRA_LEDS_RPM_MIN_SPORT) { // Se o RPM for muito baixo, apaga todos os LEDs.
-				num_leds = 0;
-				for (int j = 0; j < NUM_LEDS; j++) {
-					leds[j] = CRGB(0, 0, 0);
-				}
-			} else { // Calcula o número de LEDs a serem acesos com base no RPM.
-				num_leds = (int) media_rpm / (int) k;
-				for (int i = 0; i < num_leds; i++) {
-					leds[i] = CRGB(calcula_R(i), calcula_G(i), calcula_B(i));
-				}
-				for (int j = num_leds; j < NUM_LEDS; j++) {
-					leds[j] = CRGB(0, 0, 0); // Apaga LEDs restantes
-				}
-			}
-		}
-	}
-	FastLED.show(); // Atualiza o estado dos LEDs
-	vTaskDelayUntil(&xLastWakeTime, (75 / portTICK_PERIOD_MS));
-	}
+            // Alterna o estado dos LEDs para criar o efeito de piscar
+            if (estado_barra_leds_pisca == BARRA_LEDS_ESTADO_ON) {
+                FastLED.setBrightness(0); // Apaga os LEDs
+                FastLED.show(); // Atualiza o estado
+                estado_barra_leds_pisca = BARRA_LEDS_ESTADO_OFF; // Atualiza o estado para "desligado"
+                vTaskDelay(25 / portTICK_PERIOD_MS);
+            } else {
+                FastLED.setBrightness(intensidade); // Ajusta o brilho dos LEDs com base na variável intensidade
+                FastLED.show(); // Atualiza o estado
+                estado_barra_leds_pisca = BARRA_LEDS_ESTADO_ON; // Atualiza o estado para "ligado"
+                vTaskDelay(25 / portTICK_PERIOD_MS);
+            }
+        } else { // Se o RPM estiver dentro do intervalo normal
+            if (media_rpm < rpm_min) { // Caso o RPM seja menor que o mínimo, apaga os LEDs
+                num_leds = 0;
+                for (int i = 0; i < NUM_LEDS; i++) {
+                    leds[i] = CRGB(0, 0, 0); // Apaga todos os LEDs
+                }
+            } else { // Caso o RPM esteja dentro do intervalo, calcula quantos LEDs devem acender
+                num_leds = media_rpm / k; // Calcula a quantidade de LEDs com base nas RPM
+                for (int i = 0; i < num_leds; i++) {
+                    leds[i] = CRGB(calcula_R(i), calcula_G(i), calcula_B(i)); // Acende LEDs com a cor definida pela função
+                }
+                for (int i = num_leds; i < NUM_LEDS; i++) {
+                    leds[i] = CRGB(0, 0, 0); // Apaga os LEDs restantes
+                }
+            }
+        }
+        FastLED.show(); // Atualiza os LEDs
+        vTaskDelay(75 / portTICK_PERIOD_MS); // Delay antes de reiniciar o ciclo da task
+    }
 }

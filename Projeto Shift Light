@@ -10,7 +10,6 @@ TP1: Instrumentação e simulação de um Shift Light
 
 LINK: https://www.youtube.com/shorts/OUotWy5C90g
 LINK: https://github.com/gpcamp0s/SEEV/blob/main/Projeto%20Shift%20Light
-
 */
 
 #include "Arduino.h"
@@ -62,7 +61,7 @@ LINK: https://github.com/gpcamp0s/SEEV/blob/main/Projeto%20Shift%20Light
 
 //++++++++++++++++++++++++++++++++++++++++++++++++Cabeçalhos Interrupcoes
 static void IRAM_ATTR vInterruptHandler_encoder(void);
-static void IRAM_ATTR vExampleInterruptHandler_BTN(void);
+static void IRAM_ATTR vInterruptHandler_BTN(void);
 
 //++++++++++++++++++++++++++++++++++++++++++++++++Cabeçalhos Tarefas
 void vTask_Brain(void *pvParameters);
@@ -97,9 +96,9 @@ void setup() {
 			&vInterruptHandler_encoder, FALLING);
 
 	pinMode(BTN_PIN, INPUT); // Configura o pino do botão como entrada.
-	// Define uma interrupção para o botão, chamando a função 'vExampleInterruptHandler_BTN' quando ocorrer uma transição de FALLING
+	// Define uma interrupção para o botão, chamando a função 'vInterruptHandler_BTN' quando ocorrer uma transição de FALLING
 	attachInterrupt(digitalPinToInterrupt(BTN_PIN),
-			&vExampleInterruptHandler_BTN, FALLING);
+			&vInterruptHandler_BTN, FALLING);
 
 	//++++++++++++++++++++++++++++++++++++++++++++++Criacao objetos
 	vSemaphoreCreateBinary(xBinarySemaphore); // Cria o semáforo binário.
@@ -143,7 +142,7 @@ static void IRAM_ATTR vInterruptHandler_encoder(void) {
 }
 
 //Interrupção para o semaforo binario do botao
-static void IRAM_ATTR vExampleInterruptHandler_BTN(void) {
+static void IRAM_ATTR vInterruptHandler_BTN(void) {
 static signed portBASE_TYPE xHigherPriorityTaskWoken; // Indica se uma tarefa de maior prioridade deve ser executada
 xHigherPriorityTaskWoken = pdFALSE;
 // Liberta o semáforo binário do botão, indicando que o botão foi pressionado

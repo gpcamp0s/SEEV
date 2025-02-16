@@ -223,7 +223,7 @@ void vTask_encoder(void *pvParameters) {
 	for (;;) {
 		//Obtém o num de vezes q o semaf cont foi libertado, sendo que cada libertação corresponde a um pulso
 		num_pulsos = uxSemaphoreGetCount(xCountingSemaphore_encoder_motor);
-		xQueueReset(xCountingSemaphore_encoder_motor); // Reseta contador p/ próximo período
+		xQueueReset(xCountingSemaphore_encoder_motor); // Reseta contador p/ não acumular contagens
 
 		// Divide o num de pulsos por 20(num de pulsos por rotação) e multiplica por 600 p/ converter p/ RPM
 		rpm_e = ((float) num_pulsos /20)* 600;

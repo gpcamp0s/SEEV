@@ -59,9 +59,9 @@ SemaphoreHandle_t xBinarySemaphore;
 SemaphoreHandle_t xSerialMutex;
 
 //+++++Declaração Queues
-QueueHandle_t xQueue_rpm = NULL;
-QueueHandle_t xQueue_adc = NULL;
-QueueHandle_t xQueue_modo_conducao = NULL;
+QueueHandle_t xQueue_rpm;
+QueueHandle_t xQueue_adc;
+QueueHandle_t xQueue_modo_conducao;
 
 void setup() {
 	Serial.begin(115200); // Inicia a comunicação UART

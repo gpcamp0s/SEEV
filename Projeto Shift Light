@@ -40,7 +40,6 @@
 //+++++Declaracao Funcoes RGB
 int calcula_R(int);
 int calcula_G(int);
-int calcula_B(int);
 
 //+++++Declaração Interrupcoes
 static void IRAM_ATTR vInterruptHandler_encoder(void);
@@ -202,7 +201,7 @@ void vTask_Brain(void *pvParameters) {
 			} else { // Caso o RPM esteja dentro do intervalo, calcula quantos LEDs devem acender
 				num_leds = rpm_b / k; // Calcula a quantidade de LEDs com base nas RPM
 				for (int i = 0; i < num_leds; i++) {
-					leds[i] = CRGB(calcula_R(i), calcula_G(i), calcula_B(i)); // Acende LEDs com as cores definida pelas funções
+					leds[i] = CRGB(calcula_R(i), calcula_G(i),0); // Acende LEDs com as cores definida pelas funções
 				}
 				for (int i = num_leds; i < 8; i++) {
 					leds[i] = CRGB(0, 0, 0); // Para não acender os que não são supostos acender
@@ -316,6 +315,7 @@ void vTask_botao(void *pvParameters) {
 	}
 }
 
+// Funções para determinar as cores
 int calcula_R(int i) {
 	if (i < 3) {
 		return 0;
@@ -337,11 +337,4 @@ int calcula_G(int i) {
 		return 255;
 	}
 	return 0;
-}
-
-int calcula_B(int i) {
-	if (i < 8) {
-		return 0;
-	}
-	return 255;
 }

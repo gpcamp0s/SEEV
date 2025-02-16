@@ -34,8 +34,6 @@
 #define BARRA_LEDS_RPM_MAX_SPORT 6000
 #define BARRA_LEDS_RPM_MIN_SPORT 1500
 #define BARRA_LEDS_RPM_INICIA_PISCA_SPORT 6600
-#define BARRA_LEDS_ESTADO_OFF 0
-#define BARRA_LEDS_ESTADO_ON 1
 
 //+++++Declaracao Funcoes RGB
 int calcula_R(int);
@@ -115,7 +113,7 @@ void vTask_Brain(void *pvParameters) {
 	float rpm_b = 0;
 	int ldr = 0;
 	int num_leds = 0;
-	int estado_leds = 0;
+	int estado_leds_azul = 0;
 	char modo_conducao_b = 0;
 	int intensidade = 0;
 
@@ -176,15 +174,15 @@ void vTask_Brain(void *pvParameters) {
 			vTaskDelay(250 / portTICK_PERIOD_MS);
 
 			// Alterna o estado dos LEDs para criar o efeito de piscar
-			if (estado_leds == BARRA_LEDS_ESTADO_ON) { //Se os LEDs estiverem ligados
+			if (estado_leds_azul == 1) { //Se os LEDs estiverem ligados
 				FastLED.setBrightness(0); // Apaga os LEDs
 				FastLED.show(); // Atualiza o estado
-				estado_leds = BARRA_LEDS_ESTADO_OFF; // Atualiza o estado para "desligado"
+				estado_leds_azul = 0; // Atualiza o estado para "desligado"
 				vTaskDelay(10 / portTICK_PERIOD_MS);
 			} else {
 				FastLED.setBrightness(intensidade);
 				FastLED.show(); // Atualiza o estado
-				estado_leds = BARRA_LEDS_ESTADO_ON; // Atualiza o estado para "ligado"
+				estado_leds_azul = 1; // Atualiza o estado para "ligado"
 				vTaskDelay(10 / portTICK_PERIOD_MS);
 			}
 		} else {

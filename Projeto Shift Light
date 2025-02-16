@@ -204,7 +204,7 @@ void vTask_Brain(void *pvParameters) {
 					leds[i] = CRGB(calcula_R(i), calcula_G(i),0); // Acende LEDs com as cores definida pelas funções
 				}
 				for (int i = num_leds; i < 8; i++) {
-					leds[i] = CRGB(0, 0, 0); // Para não acender os que não são supostos acender
+					leds[i] = CRGB(0, 0, 0); // Para apagar os leds ao reduzir rpm
 				}
 			}
 		}

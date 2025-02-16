@@ -117,7 +117,7 @@ void vTask_Brain(void *pvParameters) {
 	int ldr = 0;
 	int num_leds = 0;
 	int estado_leds = 0;
-	char modo_conducao_b = MODO_CONDUCAO_NORMAL;
+	char modo_conducao_b = 0;
 	int intensidade = 0;
 
 	//Iniciar motor
@@ -217,8 +217,8 @@ void vTask_Brain(void *pvParameters) {
 
 //Task Encoder-> Calcula RPM com base nos pulsos do encoder
 void vTask_encoder(void *pvParameters) {
-	int num_pulsos;
-	float rpm_e;
+	int num_pulsos = 0;
+	float rpm_e = 0;
 
 	for (;;) {
 		//Obtém o num de vezes q o semaf cont foi libertado, sendo que cada libertação corresponde a um pulso
@@ -305,7 +305,7 @@ void vTask_display(void *pvParameters) {
 
 //Task Botao -> Faz a troca dos modos de condução
 void vTask_botao(void *pvParameters) {
-	char modo_conducao_btn = MODO_CONDUCAO_NORMAL;
+	char modo_conducao_btn = 0;
 
 	for (;;) {
 		xSemaphoreTake(xBinarySemaphore, portMAX_DELAY); //Bloqueia a tarefa ate q o semaforo seja libertado

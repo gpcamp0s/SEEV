@@ -70,7 +70,7 @@ void setup() {
 	attachInterrupt(digitalPinToInterrupt(35),	&vInterruptHandler_encoder, FALLING);
 
 	pinMode(0, INPUT); // Configura o pino do botão como entrada
-	attachInterrupt(digitalPinToInterrupt(0), &vInterruptHandler_BTN,	FALLING);
+	attachInterrupt(digitalPinToInterrupt(0), &vInterruptHandler_BTN, FALLING);
 
 	//+++++Criacao Semaforos
 	xBinarySemaphore = xSemaphoreCreateBinary();  // (0 ou 1)
@@ -83,15 +83,11 @@ void setup() {
 	xQueue_modo_conducao = xQueueCreate(1, sizeof(char));
 
 	//+++++Criação Tarefas
-	xTaskCreatePinnedToCore(vTask_Brain, "Brain", 4096, NULL, 4, NULL, 1);
-	xTaskCreatePinnedToCore(vTask_encoder, "Encoder", 4096, NULL, 5, NULL, 1);
-	xTaskCreatePinnedToCore(vTask_adc, "ADC", 4096, NULL, 3, NULL, 1);
-	xTaskCreatePinnedToCore(vTask_display, "Display", 4096, NULL, 2, NULL, 1);
-	xTaskCreatePinnedToCore(vTask_botao, "Botao", 4096, NULL, 6, NULL, 1);
-}
-
-void loop() {
-	vTaskDelete(NULL); //Tarefa suicida-se p/ passar p/ as outras tarefas.
+	xTaskCreatePinnedToCore(vTask_Brain, "Brain", 4096, NULL, 2, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_encoder, "Encoder", 4096, NULL, 2, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_adc, "ADC", 4096, NULL, 2, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_display, "Display", 4096, NULL, 1, NULL, 1);
+	xTaskCreatePinnedToCore(vTask_botao, "Botao", 4096, NULL, 3, NULL, 1);
 }
 
 //+++++Criação interrupções
@@ -133,7 +129,7 @@ void vTask_Brain(void *pvParameters) {
 		//Controlo do motor (PWM)
 		xQueuePeek(xQueue_adc, &adc_b, 0);
 		pwm = map(adc_b, 4095, 0, 0, 255);
-		ledcWrite(25, pwm); //Escreve para o canal o valor do pwm#####
+		ledcWrite(25, pwm);
 
 		//Leitura da RPM de do Modo de condução
 		xQueuePeek(xQueue_rpm, &rpm_b, 0);
@@ -335,4 +331,8 @@ int calcula_G(int i) {
 		return 255;
 	}
 	return 0;
+}
+
+void loop() {
+	vTaskDelete(NULL); //Loop principal não é utilizado em FreeRTOS
 }
